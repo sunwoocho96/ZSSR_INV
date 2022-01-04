@@ -28,12 +28,24 @@ class ZSSR_INV(nn.Module):
 
         self.conv_in = nn.Conv2D(in_channels= 3, out_channels= self.mid_channels, kernel_size=3)
 
-        self.involution = involution(self.mid_channels, 7, self.conv2_stride)
-        self.bn = nn.BatchNorm2d(self.mid_channels)
-        self.relu = nn.ReLU(inplace=True)
-
+        feature_layer = []
+        for _ in range(1, conf.n_layers-1):
+            feature_layer +=[involution(self.mid_channels, 7, self.conv2_stride), nn.ReLU(inplace=True)]
+            # self.bn = nn.BatchNorm2d(self.mid_channels)
+        self.feature_layer = nn.Sequential(*feature_layer)
         self.conv_out = nn.Conv2D(in_channels= self.mid_channels, out_channels=self.mid_channels*2, kernel_size=3)
 
 
 
     def forward(self, input_tensor):
+        input_feature = self.conv_in(input_tensor)
+        feature = self.feature_layer(input_feature)
+        output = self.conv_out(feature)
+
+        return output
+
+def weights_init(m):
+    # classname = m.__class__.__name__
+    # if classname.find('Conv2d') != -1:
+    nn.init.xavier_uniform_(m.weight)
+    # m.weight.data.normal_(0.0, 0.02)

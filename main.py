@@ -7,24 +7,39 @@ import warnings
 warnings.filterwarnings("ignore")
 import numpy as np
 import matplotlib.pyplot as plt
-from util import read_image, im2tensor01, map2tensor, tensor2im01, evaluation_dataset
-# for KernelGAN-KP
-from config.configs_FKP import Config_FKP
-from dataloader.dataloader_FKP import DataGenerator_FKP
-from model.model_FKP import KernelGAN_FKP
-# for KernelGAN
-from config.configs import Config
-from dataloader.dataloader import DataGenerator
-from model.model import KernelGAN
-from model.learner import Learner
 import time
-# for nonblind SR
-sys.path.append('../')
-from NonblindSR.usrnet import USRNet
+from utils.utils import read_image, write_image, kernel_shift
+
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]="3"
 
 from model import ZSSR
+from config.configs import Config
+from dataloader.dataloader import DataGenerator
+
+def train(kernel, conf):
+    print('-' * 30 + '\nRunning ZSSR X%d...' % (conf.sf))
+    print('image : ', conf.input_img_path)
+    start_time = time.time()
+    self.kernel = kernel_shift(kernel, sf)
+
+    self.input = read_image(conf.input_img_path)
+    self.son_input = father_to_son(self.input, self.kernel)
+
+    zssr = ZSSR(conf, self.input, self.son_input)
+    data = DataGenerator(conf, self.input, self.kernel)
+    data_loader = torch.utils.data.DataLoader(data, batch_size=64, shuffle=True, num_workers=16, pin_memory=True)
+
+    for iteration in tqdm.tqdm(range(conf.max_iters), ncols=60):
+        [lr, gt] = data.__getitem__(iteration)
+        loss, sr = zssr.train(lr, gt, iteration)
+
+    self.output = zssr.test(self.input)
+    write_image(conf.output_img_path, self.output)
+    runtime = int(time.time() - start_time)
+
+    print('Completed! runtime=%d:%d\n' % (runtime // 60, runtime % 60) + '~' * 30)
+
 
 
 def run_zssr(k_2, conf):
@@ -39,7 +54,6 @@ def run_zssr(k_2, conf):
         max_val = 255 if sr.dtype == 'uint8' else 1.
         plt.imsave(os.path.join(conf.output_dir_path, 'ZSSR_%s.png' % conf.img_name), sr, vmin=0, vmax=max_val, dpi=1)
         runtime = int(time.time() - start_time)
-        print('Completed! runtime=%d:%d\n' % (runtime // 60, runtime % 60) + '~' * 30)
 
 def create_params(filename, args):
     params = ['--i', os.path.join(args.input_dir, filename),
