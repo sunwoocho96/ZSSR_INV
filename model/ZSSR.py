@@ -53,27 +53,6 @@ class ZSSR:
 
         return loss, self.hr
 
-        # for self.sf_ind, (sf, self.kernel) in enumerate(zip(self.conf.scale_factors, self.kernels)):
-        #
-        #     sf = [sf, sf] if np.isscalar(sf) else sf
-        #     self.sf = np.array(sf) / np.array(self.base_sf)
-        #
-        #     self.output_shape = np.uint(np.ceil(np.array(self.input.shape[0:2]) * sf ))
-        #
-        #     self.init_sess(init_weights = self.conf.init_net_for_each_sf))
-        #
-        #     self.train()
-        #
-        #     post_processed_output = self.final_test()
-        #
-        #     self.hr_fathers_sources.append(post_processed_output)
-        #
-        #     self.loss_map_sources.append(create_loss_map(im=post_processed_output)) if self.conf.grad_based_loss_map else self.loss_map_sources.append(np.ones_like(post_processed_output))
-        #
-        #     self.base_change()
-        #
-        #
-        # return post_processed_output
 
     def quick_test(self, iteration):
         self.rec_input = self.ZSSR.forward(self.son_input)
