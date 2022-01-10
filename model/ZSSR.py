@@ -1,10 +1,11 @@
-import pytorch
+import torch
 import matplotlib.pyplot as plt
 import matplotlib.image as img
 from matplotlib.gridspec import GridSpec
-from configs import Config
-from utils import *
-from networks import ZSSR_INV, weights_init
+from config.config import Config
+from utils.utils import *
+from model.networks import ZSSR_INV, weights_init, ZSSR_ORI
+import numpy as np
 
 class ZSSR:
     kernel = None
@@ -13,7 +14,8 @@ class ZSSR:
     def __init__(self, conf, input, son_input):
         self.conf = conf
 
-        self.ZSSR = ZSSR_INV(conf).cuda()
+        # self.ZSSR = ZSSR_INV(conf).cuda()
+        self.ZSSR = ZSSR_ORI(conf).cuda()
         self.ZSSR.apply(weights_init)
 
         self.optimizer = torch.optim.Adam(self.ZSSR.parameters(), lr=conf.lr, betas=(conf.beta1, 0.999))
@@ -25,6 +27,10 @@ class ZSSR:
 
         self.mse_rec = []
         self.mse_steps = []
+        self.learning_rate_change_iter_nums = [0]
+
+        self.learning_rate = self.conf.lr
+
         ##
 
 
@@ -49,14 +55,14 @@ class ZSSR:
         if iteration % self.conf.run_test_every:
             self.quick_test(iteration)
 
-        self.learning_rate_policy()
+        self.learning_rate_policy(iteration)
 
         return loss, self.hr
 
 
     def quick_test(self, iteration):
         self.rec_input = self.ZSSR.forward(self.son_input)
-        self.mse_rec.append(np.mean(np.ndarray.flatten(np.square(self.input - self.rec_input))))
+        self.mse_rec.append(np.mean(np.ndarray.flatten(np.square(tensor2im(self.input - self.rec_input)))))
 
         self.mse_steps.append(iteration)
 
@@ -67,10 +73,10 @@ class ZSSR:
             if (not (1 + iteration) % self.conf.learning_rate_policy_check_every
                     and iteration - self.learning_rate_change_iter_nums[-1] > self.conf.min_iters):
                 # noinspection PyTupleAssignmentBalance
-                [slope, _], [[var, _], _] = np.polyfit(self.mse_steps[-(self.conf.learning_rate_slope_range /
-                                                                        self.conf.run_test_every):],
-                                                       self.mse_rec[-(self.conf.learning_rate_slope_range /
-                                                                      self.conf.run_test_every):],
+                [slope, _], [[var, _], _] = np.polyfit(self.mse_steps[int(-(self.conf.learning_rate_slope_range /
+                                                                        self.conf.run_test_every)):],
+                                                       self.mse_rec[int(-(self.conf.learning_rate_slope_range /
+                                                                      self.conf.run_test_every)):],
                                                        1, cov=True)
 
                 # We take the the standard deviation as a measure
@@ -81,5 +87,7 @@ class ZSSR:
 
                 # Determine learning rate maintaining or reduction by the ration between slope and noise
                 if -self.conf.learning_rate_change_ratio * slope < std:
-                    self.learning_rate /= 10
+                    self.learning_rate = self.learning_rate / 10 
                     print("learning rate updated: ", self.learning_rate)
+
+                    self.learning_rate_change_iter_nums.append(iteration)

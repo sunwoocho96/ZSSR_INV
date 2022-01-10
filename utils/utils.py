@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import convolve2d
 from torch.nn import functional as F
 from scipy.ndimage import measurements, interpolation
+from utils.imresize import imresize
 
 
 def preprocess_kernels(kernels, conf):
@@ -51,10 +52,10 @@ def kernel_shift(kernel, sf):
     # Finally shift the kernel and return
     return interpolation.shift(kernel, shift_vec)
 
-def father_to_son(self, hr_father, kernel, sf):
+def father_to_son(hr_father, kernel, sf):
     # Create son out of the father by downscaling and if indicated adding noise
     lr_son = imresize(hr_father, 1.0 / sf, kernel=kernel)
-    return np.clip(lr_son)
+    return np.clip(lr_son, 0, 1) 
 
 
 def read_image(path):
@@ -65,6 +66,8 @@ def read_image(path):
     return im
 
 def write_image(img, path):
+    print('[*] img in write image', img.shape)
+    print('[*] img squeezed ', img.dtype)
     if np.max(img) <= 1 :
         img = np.uint8(np.clip(np.round(img*255.), 0., 255.))
     im = Image.fromarray(img)
@@ -97,7 +100,40 @@ def create_probability_map(loss_map, crop):
                                                                                prob_map.flatten().shape[0]
     return prob_vec
 
+def move2cpu(d):
+    """Move data from gpu to cpu"""
+    return d.detach().cpu().float().numpy()
+
 def im2tensor(im_np):
     """Copy the image to the gpu & converts to range [-1,1]"""
     im_np = im_np / 255.0 if im_np.dtype == 'uint8' else im_np
     return torch.FloatTensor(np.transpose(im_np, (2, 0, 1)) * 2.0 - 1.0).unsqueeze(0).cuda()
+
+def tensor2im(im_t):
+    """Copy the tensor to the cpu & convert to range [0,255]"""
+    im_np = np.clip(np.round((np.transpose(move2cpu(im_t).squeeze(0), (1, 2, 0)) + 1) / 2.0 * 255.0), 0, 255)
+    return im_np.astype(np.uint8)    
+
+def rgb2gray(im):
+    """Convert and RGB image to gray-scale"""
+    return np.dot(im, [0.299, 0.587, 0.114]) if len(im.shape) == 3 else im
+
+    
+def pad_edges(im, edge):
+    """Replace image boundaries with 0 without changing the size"""
+    zero_padded = np.zeros_like(im)
+    zero_padded[edge:-edge, edge:-edge] = im[edge:-edge, edge:-edge]
+    return zero_padded
+
+    
+def clip_extreme(im, percent):
+    """Zeroize values below the a threshold and clip all those above"""
+    # Sort the image
+    im_sorted = np.sort(im.flatten())
+    # Choose a pivot index that holds the min value to be clipped
+    pivot = int(percent * len(im_sorted))
+    v_min = im_sorted[pivot]
+    # max value will be the next value in the sorted array. if it is equal to the min, a threshold will be added
+    v_max = im_sorted[pivot + 1] if im_sorted[pivot + 1] > v_min else v_min + 10e-6
+    # Clip an zeroize all the lower values
+    return np.clip(im, v_min, v_max) - v_min
